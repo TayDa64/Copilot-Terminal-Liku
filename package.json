@@ -1,0 +1,81 @@
+{
+  "name": "copilot-terminal-liku",
+  "displayName": "Copilot Terminal Liku",
+  "description": "Catches terminal errors and helps resolve them using Copilot Chat",
+  "version": "0.0.1",
+  "publisher": "TayDa64",
+  "engines": {
+    "vscode": "^1.99.0"
+  },
+  "enabledApiProposals": [
+    "terminalDataWriteEvent"
+  ],
+  "categories": [
+    "Other",
+    "AI"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Copilot Terminal Liku",
+      "properties": {
+        "copilotTerminalLiku.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable/disable the automatic terminal error detection."
+        },
+        "copilotTerminalLiku.ignoreExitCodes": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "default": [
+            130
+          ],
+          "description": "List of terminal command exit codes to ignore."
+        },
+        "copilotTerminalLiku.ignoreCommands": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "List of commands (exact match) whose failures should be ignored."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "copilot-terminal-liku.runCommand",
+        "title": "Liku: Run Command and Analyze on Failure..."
+      },
+      {
+        "command": "copilot-terminal-liku.analyzeLast",
+        "title": "Liku: Analyze Last Error in Active Terminal"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.6",
+    "@types/node": "^20.11.20",
+    "@types/vscode": "^1.99.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.2",
+    "@typescript-eslint/parser": "^7.0.2",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "node-pty": "^1.0.0"
+  }
+}
