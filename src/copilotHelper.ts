@@ -4,29 +4,63 @@ import * as os from 'os';
 
 export class CopilotInteraction {
 
+    private static smartTruncateOutput(fullOutput: string, maxLength: number = 2000, contextLines: number = 10): string {
+        if (fullOutput.length <= maxLength) {
+            return fullOutput;
+        }
+
+        const lines = fullOutput.split(/\r?\n/);
+        if (lines.length <= contextLines * 2) {
+            return `...\n${fullOutput.substring(fullOutput.length - maxLength)}`;
+        }
+
+        const firstNLines = lines.slice(0, contextLines).join('\n');
+        const lastNLines = lines.slice(-contextLines).join('\n');
+        const combined = `${firstNLines}\n...\n[Output Truncated - Middle Omitted]\n...\n${lastNLines}`;
+
+        if (combined.length > maxLength) {
+            return `...\n${combined.substring(combined.length - maxLength)}`;
+        }
+        return combined;
+    }
+
     public static async sendToCopilotChat(command: string, exitCode: number, cwd: string, errorOutput: string): Promise<void> {
+        console.log(`[Copilot Helper] sendToCopilotChat CALLED. Command: "${command}", ExitCode: ${exitCode}, CWD: "${cwd}", OutputLength: ${errorOutput.length}`); // ADDED CWD and OutputLength here
+        console.log(`[Copilot Helper] Environment: OS: ${os.platform()}, Architecture: ${os.arch()}`); // ADDED OS and Architecture
+        // console.log(`[Copilot Helper] Shell: ${process.env.SHELL || (os.platform() === 'win32' ? 'Windows Shell (Powershell/CMD)' : 'bash/zsh/default')}`); // ADDED SHELL
+        // console.log(`[Copilot Helper] Error Output Length: ${errorOutput.length}`); // ADDED Error Output Length
+        // console.log(`[Copilot Helper] Error Output: ${errorOutput}`); // ADDED Error Output
+        // console.log(`[Copilot Helper] Command: ${command}`); // ADDED Command
+        // console.log(`[Copilot Helper] Exit Code: ${exitCode}`); // ADDED Exit Code
+        // console.log(`[Copilot Helper] CWD: ${cwd}`); // ADDED CWD
         try {
-            // --- Check if Copilot Chat Extension is active ---
             const chatExtension = vscode.extensions.getExtension('github.copilot-chat');
-            if (!chatExtension?.isActive) {
-                // Attempt to activate it - this might not be reliable or immediate
-                // await chatExtension?.activate();
-                // If activation is complex, just warn the user
-                vscode.window.showWarningMessage("GitHub Copilot Chat extension is not active. Please ensure it's enabled and ready.");
-                // Optionally, try opening it anyway, it might activate on open
+            if (!chatExtension) {
+                 console.warn("[Copilot Helper] GitHub Copilot Chat extension not found.");
+                 vscode.window.showWarningMessage("GitHub Copilot Chat extension not found. Please ensure it's installed and enabled to use this feature.");
+                 return;
             }
+            console.log(`[Copilot Helper] Copilot Chat extension found. Active: ${chatExtension.isActive}`);
 
-            // --- Construct the Prompt ---
-            const shell = process.env.SHELL || os.platform();
-            const contextPrompt = `
-Analyze the following terminal command failure and suggest solutions:
+            console.log(`[Copilot Helper] Parameter - command: "${command}"`);
+            console.log(`[Copilot Helper] Parameter - exitCode: ${exitCode}`);
+            console.log(`[Copilot Helper] Parameter - cwd: "${cwd}"`);
+            console.log(`[Copilot Helper] Parameter - errorOutput (first 50 chars): "${errorOutput.substring(0, 50)}"`);
+             // --- END DEBUG LOGS ---
 
-**Command:**
-\`\`\`bash
+            const processedOutput = this.smartTruncateOutput(errorOutput || '[No output captured or output was empty]');
+            // --- ADD DEBUG LOG FOR PROCESSED OUTPUT ---
+            console.log(`[Copilot Helper] Processed Output (first 50 chars): "${processedOutput.substring(0, 50)}"`);
+             // --- END DEBUG LOG ---
+
+            const shell = process.env.SHELL || (os.platform() === 'win32' ? 'Windows Shell (Powershell/CMD)' : 'bash/zsh/default');
+            const promptText = `Analyze the following terminal command failure and suggest solutions. Focus on the most likely cause and actionable steps.
+**Command Executed:**
+\`\`\`
 ${command}
 \`\`\`
 
-**Exit Code:** ${exitCode}
+**Exit Code:** \`${exitCode}\`
 
 **Working Directory:**
 \`\`\`
@@ -34,42 +68,40 @@ ${cwd}
 \`\`\`
 
 **Environment:**
-* OS: ${os.platform()} (${os.release()})
-* Shell: ${shell}
+*   OS: ${os.platform()} (${os.release()})
+*   Architecture: ${os.arch()}
+*   Shell: ${shell}
 
-**Terminal Output:**
+**Terminal Output (may be summarized/truncated):**
 \`\`\`
-${errorOutput}
+${processedOutput}
 \`\`\`
-`;
+Please provide a concise explanation of the most likely cause and 1-3 specific commands or steps to resolve this error.`;
+            // --- ADD DEBUG LOG FOR FINAL PROMPT ---
+            console.log(`[Copilot Helper] Final promptText (first 300 chars):\n${promptText.substring(0, 300)}`);
+             // --- END DEBUG LOG ---
+            console.log("[Copilot Helper] Prompt constructed. Attempting to copy to clipboard...");
+            await vscode.env.clipboard.writeText(promptText);
+            console.log('[Copilot Helper] Prompt copied to clipboard successfully.');
 
-            // --- Attempt to Send/Focus Chat ---
+            console.log("[Copilot Helper] Attempting to open/focus Copilot Chat view (without specific query)...");
+            try {
+                 await vscode.commands.executeCommand('workbench.action.chat.open');
+                 console.log('[Copilot Helper] Executed "workbench.action.chat.open" command successfully.');
+            } catch (openError) {
+                 console.error('[Copilot Helper] CRITICAL ERROR trying to open chat view:', openError);
+            }
 
-            // Method A: Try to use context variables (needs verification if these context keys work)
-            // await vscode.commands.executeCommand('setContext', 'github.copilot.chat.terminalErrorCommand', command);
-            // await vscode.commands.executeCommand('setContext', 'github.copilot.chat.terminalErrorCode', exitCode);
-            // await vscode.commands.executeCommand('setContext', 'github.copilot.chat.terminalErrorOutput', errorOutput);
-            // await vscode.commands.executeCommand('setContext', 'github.copilot.chat.terminalErrorCwd', cwd);
-
-            // Then open chat, perhaps pre-filled with a query asking to use context
-             await vscode.commands.executeCommand('workbench.action.chat.open', { query: '/explain #terminalOutput' }); // Example query using potential context - NEEDS TESTING
-
-            // Method B: Fallback to Clipboard if Method A isn't viable or fails
-            // (We'll implement this as the primary for now due to uncertainty of Method A)
-
-            // 1. Copy prompt to clipboard
-            await vscode.env.clipboard.writeText(contextPrompt);
-
-            // 2. Open Copilot Chat view (attempts to bring it to focus)
-            await vscode.commands.executeCommand('workbench.action.chat.open');
-
-             // 3. Show clear notification
-            vscode.window.showInformationMessage("Copilot prompt for failed command copied. Paste (Ctrl+V) into the Chat window and send.");
-
+            console.log("[Copilot Helper] Attempting to show information message...");
+            vscode.window.showInformationMessage(
+                "Liku: Prompt for failed command copied. Paste (Ctrl+V or Cmd+V) into the Copilot Chat window to get help.",
+                { modal: false }
+            );
+            console.log("[Copilot Helper] Information message shown (or attempted).");
 
         } catch (error) {
-            console.error("Error interacting with Copilot Chat:", error);
-            vscode.window.showErrorMessage("Failed to prepare prompt for Copilot Chat. Please copy the error manually.");
+            console.error("[Copilot Helper] CRITICAL ERROR in sendToCopilotChat:", error);
+            vscode.window.showErrorMessage("Liku: Failed to prepare prompt for Copilot Chat. Please copy the error manually.");
         }
     }
 }
